@@ -53,7 +53,7 @@ class Buffer(Actor):
         
     def will_end(self):
         # write buffer to disk, then exit
-        _log.info("flushing buffers")
+        _log.info("flushing buffers ({} items)".format(len(self.buffer)))
         if len(self.buffer) > 0:
             fifo = None
             try:
@@ -95,7 +95,7 @@ class Buffer(Actor):
     @stateguard(lambda actor: actor.uses_external and len(actor.buffer) < actor.num_tokens)
     @condition([], [])
     def read_buffer(self):
-        _log.info("disk to buffer")
+        _log.info("start - disk to buffer ({} items in buffer)".format(len(self.buffer)))
         fifo = None
         try:
             fifo = self['filequeue'].fifo(self.buffer_name)
@@ -108,6 +108,7 @@ class Buffer(Actor):
             fifo = None
         finally:
             if fifo: fifo.close()
+        _log.info("end - disk to buffer ({} items in buffer)".format(len(self.buffer)))
         
     action_priority = (send_buffer, read_buffer, passthrough, buffer_data)
     
