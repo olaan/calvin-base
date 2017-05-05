@@ -111,8 +111,8 @@ class OPCUAClient(object):
     
     def _retry_connect(self, failure, notifier):
         failtype = failure.type
-        _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, RECONNECT_TIMER))
         if self._client:
+            _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, RECONNECT_TIMER))
             # Only retry if client has not been deleted (disconnected or migrated)
             self._reconnect_in_progress = async.DelayedCall(RECONNECT_TIMER, self.connect, notifier)
 
