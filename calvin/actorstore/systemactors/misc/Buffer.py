@@ -30,15 +30,17 @@ class Buffer(Actor):
         data : the same data
     """
     
-    @manage(['num_tokens', 'buffer_name'])
+    @manage(['num_tokens', 'buffer_name', 'sent', 'received'])
     def init(self, num_tokens, buffer_name):
         _log.info("init buffer")
         self.num_tokens = num_tokens
         self.buffer_name = buffer_name
+        self.received = 0
+        self.sent = 0
         self.setup()
 
     def setup(self):
-        self.uses_external = True
+        self.uses_external = True # always check for disk data
         self.use(Buffer.requires[0], shorthand="collections")
         self.use(Buffer.requires[1], shorthand="filequeue")
         self.use(Buffer.requires[2], shorthand="json")
@@ -48,7 +50,7 @@ class Buffer(Actor):
         self.setup()
 
     def will_migrate(self):
-        # probably not a good idea unless buffer is empty
+        # probably not a good idea unless buffer (incl disk) is empty
         pass
         
     def will_end(self):
@@ -67,13 +69,28 @@ class Buffer(Actor):
                 if fifo: fifo.close()
         _log.info("done")
     
+    
+    def incoming(self):
+        self.received += 1
+        if self.received % 1000 == 0:
+            _log.info("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
+    
+    def outgoing(self):
+        self.sent += 1
+        if self.sent % 1000 == 0:
+            _log.info("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
+
+
     @stateguard(lambda actor: len(actor.buffer) == 0 and not actor.uses_external)
     @condition(['data'], ['data'])
     def passthrough(self, data):
+        self.incoming()
+        self.outgoing()
         return (data, )
 
     @condition(['data'], [])
     def buffer_data(self, data):
+        self.incoming()
         self.buffer.append(data)
         if len(self.buffer) > 2*self.num_tokens:
             _log.info("buffer to file")
@@ -90,6 +107,7 @@ class Buffer(Actor):
     @stateguard(lambda actor: len(actor.buffer) > 0)
     @condition([], ['data'])
     def send_buffer(self):
+        self.outgoing()
         return (self.buffer.popleft(),)
 
     @stateguard(lambda actor: actor.uses_external and len(actor.buffer) < actor.num_tokens)
