@@ -45,12 +45,27 @@ class Buffer(Actor):
         self.buffer = self['collections'].deque()
     
     def did_migrate(self):
-        # probably not a good idea unless buffer is empty
         self.setup()
+
+    def will_migrate(self):
+        # probably not a good idea unless buffer is empty
+        pass
         
     def will_end(self):
         # write buffer to disk, then exit
-        pass
+        _log.info("flushing buffers")
+        if len(self.buffer) > 0:
+            fifo = None
+            try:
+                fifo = self['filequeue'].fifo(self.buffer_name)
+                while len(self.buffer) > 0:
+                    data = self.buffer.popleft()
+                    fifo.push(self['json'].dumps(data))
+                fifo.close()
+                fifo = None
+            finally:
+                if fifo: fifo.close()
+        _log.info("done")
     
     @stateguard(lambda actor: len(actor.buffer) == 0 and not actor.uses_external)
     @condition(['data'], ['data'])
@@ -89,6 +104,8 @@ class Buffer(Actor):
                 self.buffer.append(self['json'].loads(data))
             if len(fifo) == 0:
                 self.uses_external = False
+            fifo.close()
+            fifo = None
         finally:
             if fifo: fifo.close()
         
