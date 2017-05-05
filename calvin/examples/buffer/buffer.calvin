@@ -1,0 +1,6 @@
+src : std.CountTimer()
+buf : misc.Buffer(num_tokens=10, buffer_name="mybuffer")
+snk : test.NoSink(delay=10)
+
+src.integer > buf.data
+buf.data > snk.void
