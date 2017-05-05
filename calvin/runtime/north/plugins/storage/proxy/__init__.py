@@ -60,22 +60,22 @@ class StorageProxy(StorageBase):
         self.tunnel.register_tunnel_down(CalvinCB(self.tunnel_down, org_cb=org_cb))
         self.tunnel.register_tunnel_up(CalvinCB(self.tunnel_up, org_cb=org_cb))
         self.tunnel.register_recv(self.tunnel_recv_handler)
+    
+    def _reconnect(self, delay=2, cb=None):
+        self._reconnecting = async.DelayedCall(delay, self.node.network.join,
+                                [self.master_uri], callback=CalvinCB(self._start_link_cb, org_cb = cb),
+                                corresponding_server_node_names=[self._server_node_name])
         
     def _start_link_cb(self, status, uri, peer_node_id, org_cb):
         _log.analyze(self.node.id, "+", {'status': str(status)}, peer_node_id=peer_node_id)
 
-        _log.info("status: {}, {}".format(status, str(status)))
-
         if status != 200:
             self.retries += 1
                 
-            if self.max_retries - self.retries != 0:
+            if self.max_retries == -1 or self.max_retries - self.retries != 0:
                 delay = 0.5 * self.retries if self.retries < 20 else 10
                 _log.info("Link to proxy failed, retrying in {}".format(delay))
-                async.DelayedCall(delay, self.node.network.join,
-                    [self.master_uri], callback=CalvinCB(self._start_link_cb, org_cb=org_cb),
-                    corresponding_server_node_names=[self._server_node_name])
-                return
+                return self._reconnect(delay, org_cb)
             else :
                 _log.info("Link to proxy still failing, giving up")
                 if org_cb:
