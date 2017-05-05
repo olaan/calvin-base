@@ -44,9 +44,9 @@ class Buffer(Actor):
         self.use(Buffer.requires[2], shorthand="json")
         self.buffer = self['collections'].deque()
     
-    def will_migrate(self):
+    def did_migrate(self):
         # probably not a good idea unless buffer is empty
-        pass
+        self.setup()
         
     def will_end(self):
         # write buffer to disk, then exit
