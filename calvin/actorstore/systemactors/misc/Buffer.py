@@ -97,9 +97,10 @@ class Buffer(Actor):
             fifo = None
             try:
                 fifo = self['filequeue'].fifo(self.buffer_name)
+                data = []
                 for i in range(self.num_tokens):
-                    data = self.buffer.popleft()
-                    fifo.push(self['json'].dumps(data))
+                    data.append(self.buffer.popleft())
+                fifo.push(self['json'].dumps(data))
                 self.uses_external = True
             finally:
                 if fifo: fifo.close()
@@ -119,7 +120,7 @@ class Buffer(Actor):
             fifo = self['filequeue'].fifo(self.buffer_name)
             while len(fifo) and len(self.buffer) < 2*self.num_tokens:
                 data = fifo.pop()
-                self.buffer.append(self['json'].loads(data))
+                self.buffer.extend(self['json'].loads(data))
             if len(fifo) == 0:
                 self.uses_external = False
             fifo.close()
