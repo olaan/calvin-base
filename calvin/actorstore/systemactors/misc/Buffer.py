@@ -117,7 +117,7 @@ class Buffer(Actor):
         fifo = None
         try:
             fifo = self['filequeue'].fifo(self.buffer_name)
-            while len(fifo) and len(self.buffer) < self.num_tokens:
+            while len(fifo) and len(self.buffer) < 2*self.num_tokens:
                 data = fifo.pop()
                 self.buffer.append(self['json'].loads(data))
             if len(fifo) == 0:
