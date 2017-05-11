@@ -1,0 +1,6 @@
+d : flow.Init(data="First!")
+pb : web.Pushbullet(channel="my-channel")
+
+voidport > d.in
+d.out > pb.note
+"A Title" > pb.title
