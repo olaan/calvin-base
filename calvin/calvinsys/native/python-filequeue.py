@@ -27,3 +27,4 @@ class FileQueue(object):
 
 def register(node = None, actor = None):
     return FileQueue()
+
