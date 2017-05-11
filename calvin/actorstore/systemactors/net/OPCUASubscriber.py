@@ -85,9 +85,9 @@ class OPCUASubscriber(Actor):
             variable["info"] = self.parameters[variable["tag"]]["info"]
             self.changed_params.append(variable)
             self._idx += 1
-            if self._idx == 100:
-                self._idx = 0
-                _log.info(" - changed: %d variables queued" % (len(self.changed_params),))
+            self._report = True
+            if self._idx % 1000 == 0:
+                _log.debug(" - changed - {} changed, {} queued".format(self._idx, len(self.changed_params)))
                 self._report = True
         return ()
 
@@ -96,8 +96,7 @@ class OPCUASubscriber(Actor):
     def handle_changed(self):
         variable = self.changed_params.pop(0)
         if self._report:
-            _log.info(" - handle_changed: %d variables queued" % (len(self.changed_params),))
-            self._report = False
+            _log.debug(" - handle changed - {} changed, {} queued".format(self._idx, len(self.changed_params)))
         return (variable,)
 
     action_priority = (handle_changed, changed)
