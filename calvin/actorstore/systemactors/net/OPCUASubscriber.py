@@ -85,7 +85,7 @@ class OPCUASubscriber(Actor):
             variable["info"] = self.parameters[variable["tag"]]["info"]
             self.changed_params.append(variable)
             self._idx += 1
-            self._report = True
+            self._report = False
             if self._idx % 1000 == 0:
                 _log.debug(" - changed - {} changed, {} queued".format(self._idx, len(self.changed_params)))
                 self._report = True
