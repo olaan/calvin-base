@@ -133,9 +133,11 @@ class OPCUAClient(object):
     def disconnect(self):
         if self.subscription:
             async.call_in_thread(self.subscription.delete)
+            self.subscription = None
+            
         if self._client:
             async.call_in_thread(self._client.disconnect)
-        self._client = None
+            self._client = None
 
     def _collect_variables(self):
         vars = []
