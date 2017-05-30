@@ -61,7 +61,7 @@ class OPCUASubscriber(Actor):
         self.endpoint = endpoint
         self.namespace = config.get("namespace", 2)
         self.parameters= config["parameters"]
-        self.sourceid = config.get("source-id", "N/A")
+        self.sourceid = config.get("source", "N/A")
         self.client_config = config.get("client_configuration")
         self.changed_params = []
         self.setup()
