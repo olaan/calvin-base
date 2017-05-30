@@ -164,7 +164,7 @@ class OPCUAClient(object):
 
     def _subscribe_error(self, failure):
         _log.warning("Failed to setup subscription with reason {} - resetting connection".format(failure.type))
-        async.DelayedCall(self._watchdog_timeout, self.watchdog)
+        async.DelayedCall(self._watchdog_timeout, self._watchdog)
     
     def subscribe(self, nodeids, handler):
         self.nodeids = nodeids
