@@ -36,7 +36,7 @@ class OPCUAClient(object):
         self._client = None
         self._handles = []
         self._subscription = None
-        self._client_properties = None
+        self._client_properties = {}
         self.variable_changed = False
         self.state = OPCUAClient.STATE["init"]
     
@@ -86,16 +86,6 @@ class OPCUAClient(object):
         variable['endpoint'] = self.endpoint
         variable['calvints'] = int(1000*time.time())
         return variable
-    
-    def _start(self, nodeids):
-        self._subscription = self._client.create_subscription(OPCUAClient.INTERVAL, self.add_change)
-        self._variables = self._client.collect_variables(nodeids)
-        for v in self._variables:
-            try:
-                self._handles.append(self._client.subscribe_change(self._subscription, v))
-            except Exception as e:
-                print e
-        self._set_state(OPCUAClient.STATE["running"])
 
     def shutdown(self):
         self._client.disconnect()
