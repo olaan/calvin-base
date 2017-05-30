@@ -106,7 +106,7 @@ class OPCUAClient(object):
     def start_subscription(self, endpoint, nodeids):
         if not self._client:
             self.endpoint = endpoint
-            self._client = client.OPCUAClient(self.endpoint)
+            self._client = client.OPCUAClient(self.endpoint, self._client_properties)
         self._client.subscribe(nodeids, self.add_change)
 
 
