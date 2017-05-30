@@ -103,18 +103,9 @@ class OPCUAClient(object):
         self._client = None
         self._handle = None
         self._reconnect_in_progress = None
-        self._watchdog_timeout = config.get("watchdog_timeout") or WATCHDOG_TIMEOUT
-        self._reconnect_timer = config.get("reconnect_timer") or RECONNECT_TIMER
-        self._subscription_interval = config.get("subscription_interval") or self.INTERVAL
-            
-    def set_watchdog_timeout(self, watchdog_timeout):
-        self._watchdog_timeout = watchdog_timeout
-    
-    def set_reconnect_timer(self, reconnect_timer):
-        self._reconnect_timer = reconnect_timer
-    
-    def set_subscription_interval(self, sub_interval):
-        self._subscription_interval = sub_interval
+        self._watchdog_timeout = config.get("watchdog_timeout", None) or WATCHDOG_TIMEOUT
+        self._reconnect_timer = config.get("reconnect_timer", None) or RECONNECT_TIMER
+        self._subscription_interval = config.get("subscription_interval", None) or INTERVAL
         
     def connect(self, notifier):
         self._client = opcua.Client(self._endpoint)
@@ -171,10 +162,12 @@ class OPCUAClient(object):
     def subscribe(self, nodeids, handler):
         self.nodeids = nodeids
         self.handler = handler
+        
         def notifier(dummy=None):
-            d = threads.defer_to_thread(self._client.create_subscription, self._subscription_interval, self.SubscriptionHandler(handler, self._watchdog))
+            d = threads.defer_to_thread(self._client.create_subscription, self._subscription_interval, self.SubscriptionHandler(handler, self._watchdog, self._watchdog_timeout))
             d.addCallback(self._setup_subscription)
             d.addErrback(self._subscribe_error)
+        
         if self._client:
             notifier()
         else :
