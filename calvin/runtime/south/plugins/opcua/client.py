@@ -126,8 +126,9 @@ class OPCUAClient(object):
         failtype = failure.type
         if self._client:
             _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, self._reconnect_timer))
-            # Only retry if client has not been deleted (disconnected or migrated)
-            self._reconnect_in_progress = async.DelayedCall(self._reconnect_timer, self.connect, notifier)
+            if not self._reconnect_in_progress :
+                # Only retry if client has not been deleted (disconnected or migrated)
+                self._reconnect_in_progress = async.DelayedCall(self._reconnect_timer, self.connect, notifier)
 
     def disconnect(self):
         if self.subscription:
