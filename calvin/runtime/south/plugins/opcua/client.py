@@ -21,8 +21,10 @@ import opcua
 from calvin.utilities.calvinlogger import get_logger
 from calvin.runtime.south.plugins.async import threads, async
 
-WATCHDOG_TIMER=10
-RECONNECT_TIMER=10
+WATCHDOG_TIMEOUT = 60 # Reset connection if no data within 2 x WATCHDOG_TIMER seconds
+RECONNECT_TIMER = 10 # Attempt reconnect every RECONNECT_TIMER seconds if connection lost
+INTERVAL = 1000 # Interval to use in subscription check, probably ms
+
 
 _log = get_logger(__name__)
 
@@ -59,25 +61,24 @@ def get_node_id_as_string(node):
     return nodeid
 
 class OPCUAClient(object):
-    
-    INTERVAL = 1000 # Interval to use in subscription check, probably ms
-    
+
     class SubscriptionHandler(object):
-        def __init__(self, handler, watchdog=None):
+        def __init__(self, handler, watchdog=None, watchdog_timeout=None):
             super(OPCUAClient.SubscriptionHandler, self).__init__()
             self._handler = handler
             self._watchdog = watchdog
+            self.watchdog_timeout = watchdog_timeout
             self.saw_data = False
-            # if available, set up watchdog to be called every 30 seconds
+            # if available, set up watchdog to be called every WATCHDOG_TIMER seconds
             if self._watchdog:
-                async.DelayedCall(WATCHDOG_TIMER, self.check_data)
+                async.DelayedCall(self.watchdog_timeout, self.check_data)
 
         def check_data(self):
             if self.saw_data:
                 self.saw_data = False
-                async.DelayedCall(WATCHDOG_TIMER, self.check_data)
+                async.DelayedCall(self.watchdog_timeout, self.check_data)
             else:
-                _log.info("No data for {} seconds".format(2*WATCHDOG_TIMER))
+                _log.info("No data for {} seconds".format(2*self.watchdog_timeout))
                 self._watchdog()
             
         def notify_handler(self, node, variable):
@@ -93,7 +94,7 @@ class OPCUAClient(object):
         def event_notification(self, event):
             _log.info("%r" % (event,))
             
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, config):
         self._endpoint = endpoint
         self.nodeids = []
         self.subscription = None
@@ -102,7 +103,19 @@ class OPCUAClient(object):
         self._client = None
         self._handle = None
         self._reconnect_in_progress = None
+        self._watchdog_timeout = config.get("watchdog_timeout") or WATCHDOG_TIMEOUT
+        self._reconnect_timer = config.get("reconnect_timer") or RECONNECT_TIMER
+        self._subscription_interval = config.get("subscription_interval") or self.INTERVAL
             
+    def set_watchdog_timeout(self, watchdog_timeout):
+        self._watchdog_timeout = watchdog_timeout
+    
+    def set_reconnect_timer(self, reconnect_timer):
+        self._reconnect_timer = reconnect_timer
+    
+    def set_subscription_interval(self, sub_interval):
+        self._subscription_interval = sub_interval
+        
     def connect(self, notifier):
         self._client = opcua.Client(self._endpoint)
         d = threads.defer_to_thread(self._client.connect)
@@ -112,9 +125,9 @@ class OPCUAClient(object):
     def _retry_connect(self, failure, notifier):
         failtype = failure.type
         if self._client:
-            _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, RECONNECT_TIMER))
+            _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, self._reconnect_timer))
             # Only retry if client has not been deleted (disconnected or migrated)
-            self._reconnect_in_progress = async.DelayedCall(RECONNECT_TIMER, self.connect, notifier)
+            self._reconnect_in_progress = async.DelayedCall(self._reconnect_timer, self.connect, notifier)
 
     def disconnect(self):
         if self.subscription:
@@ -150,13 +163,13 @@ class OPCUAClient(object):
 
     def _subscribe_error(self, failure):
         _log.warning("Failed to setup subscription with reason {} - resetting connection".format(failure.type))
-        async.DelayedCall(WATCHDOG_TIMER, self.watchdog)
+        async.DelayedCall(self._watchdog_timeout, self.watchdog)
     
     def subscribe(self, nodeids, handler):
         self.nodeids = nodeids
         self.handler = handler
         def notifier(dummy=None):
-            d = threads.defer_to_thread(self._client.create_subscription, self.INTERVAL, self.SubscriptionHandler(handler, self._watchdog))
+            d = threads.defer_to_thread(self._client.create_subscription, self._subscription_interval, self.SubscriptionHandler(handler, self._watchdog))
             d.addCallback(self._setup_subscription)
             d.addErrback(self._subscribe_error)
         if self._client:

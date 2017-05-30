@@ -36,9 +36,13 @@ class OPCUAClient(object):
         self._client = None
         self._handles = []
         self._subscription = None
+        self._client_properties = None
         self.variable_changed = False
         self.state = OPCUAClient.STATE["init"]
     
+    def configure(self, config):
+        self._client_properties = config
+            
     def _trigger(self):
         self._node.sched.schedule_calvinsys(actor_id=self._actor)
         
@@ -53,7 +57,7 @@ class OPCUAClient(object):
         
     def connect(self, endpoint):
         self.endpoint = endpoint
-        self._client = client.OPCUAClient(self.endpoint)
+        self._client = client.OPCUAClient(self.endpoint, self._client_properties)
         self._client.connect(notify=self._connected)
     
     @property

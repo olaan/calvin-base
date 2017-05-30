@@ -27,6 +27,7 @@ class OPCUASubscriber(Actor):
 
     Configuration input is of the form:
     {
+      "source": <mnemonic or similar identifying the source, e.g. machine>,
       "namespace": <namespace number>,
       "parameters": {
         "<tag>" : {"address": "<address>", "info": "<description>"}
@@ -38,6 +39,7 @@ class OPCUASubscriber(Actor):
     Variable output is of the form (sample values given)
     {
         "id": "ns=2;s=/Channel/Parameter/rpa[u1,115]",
+        "source": "IM-1",
         "tag": "R115",
         "type": "Double",
         "value": "0.0",
@@ -54,11 +56,13 @@ class OPCUASubscriber(Actor):
         variable : json description of variable as shown above.
     """
 
-    @manage(['endpoint', 'parameters', 'namespace', 'changed_params'])
+    @manage(['endpoint', 'parameters', 'namespace', 'changed_params', 'client_config', 'sourceid'])
     def init(self, endpoint, config):
         self.endpoint = endpoint
         self.namespace = config.get("namespace", 2)
         self.parameters= config["parameters"]
+        self.sourceid = config.get("source-id", "N/A")
+        self.client_config = config.get("client_configuration")
         self.changed_params = []
         self.setup()
 
@@ -71,6 +75,8 @@ class OPCUASubscriber(Actor):
     def setup(self):
         self.tags = { str("ns=%d;s=%s" % (self.namespace, tag_value["address"])) : str(tag) for tag, tag_value in self.parameters.items() }
         self.use('calvinsys.opcua.client', shorthand='opcua')
+        if self.client_config:
+            self['opcua'].configure(self.client_config)
         self['opcua'].start_subscription(self.endpoint, self.tags.keys())
         self._report = False
         self._idx = 0
@@ -81,6 +87,7 @@ class OPCUASubscriber(Actor):
     def changed(self):
         while self['opcua'].variable_changed:
             variable = self['opcua'].get_first_changed()
+            variable["source"] = self.sourceid
             variable["tag"] = self.tags[variable["id"]]
             variable["info"] = self.parameters[variable["tag"]]["info"]
             self.changed_params.append(variable)
