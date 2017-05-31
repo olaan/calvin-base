@@ -16,6 +16,7 @@
 
 from calvin.actor.actor import Actor, manage, condition
 from calvin.utilities.calvinlogger import get_logger
+import time
 
 _log = get_logger(__name__)
 
@@ -41,12 +42,13 @@ class TokenCounter(Actor):
         self.setup()
 
     def setup(self):
+        self.timer_start = time()
         self.logger = _log.info
 
     @condition(action_input=['token'])
     def count(self, token):
         self.ctr += 1
         if self.ctr % self.checkpoint == 0 :
-            _log.info("{} tokens received".format(self.ctr))
+            _log.info("{} tokens received in {} self".format(self.ctr, time() - self.timer_start))
 
     action_priority = (count, )
