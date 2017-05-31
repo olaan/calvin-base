@@ -48,6 +48,6 @@ class TokenCounter(Actor):
     def count(self, token):
         self.ctr += 1
         if self.ctr % self.checkpoint == 0 :
-            _log.info("{}: {} tokens received in {} self".format(self.origin, self.ctr))
+            _log.info("{}: {} tokens received".format(self.origin, self.ctr))
 
     action_priority = (count, )
