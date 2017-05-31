@@ -27,7 +27,7 @@ class OPCUASubscriber(Actor):
 
     Configuration input is of the form:
     {
-      "source": <mnemonic or similar identifying the source, e.g. machine>,
+      "origin": <mnemonic or similar identifying the origin, e.g. machine>,
       "namespace": <namespace number>,
       "parameters": {
         "<tag>" : {"address": "<address>", "info": "<description>"}
@@ -39,7 +39,7 @@ class OPCUASubscriber(Actor):
     Variable output is of the form (sample values given)
     {
         "id": "ns=2;s=/Channel/Parameter/rpa[u1,115]",
-        "source": "IM-1",
+        "origin": "IM-1",
         "tag": "R115",
         "type": "Double",
         "value": "0.0",
@@ -56,12 +56,12 @@ class OPCUASubscriber(Actor):
         variable : json description of variable as shown above.
     """
 
-    @manage(['endpoint', 'parameters', 'namespace', 'changed_params', 'client_config', 'sourceid'])
+    @manage(['endpoint', 'parameters', 'namespace', 'changed_params', 'client_config', 'origin'])
     def init(self, endpoint, config):
         self.endpoint = endpoint
         self.namespace = config.get("namespace", 2)
         self.parameters= config["parameters"]
-        self.sourceid = config.get("source", "N/A")
+        self.origin = config.get("origin", "N/A")
         self.client_config = config.get("client_configuration")
         self.changed_params = []
         self.setup()
@@ -87,7 +87,7 @@ class OPCUASubscriber(Actor):
     def changed(self):
         while self['opcua'].variable_changed:
             variable = self['opcua'].get_first_changed()
-            variable["source"] = self.sourceid
+            variable["origin"] = self.origin
             variable["tag"] = self.tags[variable["id"]]
             variable["info"] = self.parameters[variable["tag"]]["info"]
             self.changed_params.append(variable)
