@@ -93,7 +93,6 @@ class Buffer(Actor):
         self.incoming()
         self.buffer.append(data)
         if len(self.buffer) > 2*self.num_tokens:
-            _log.info("buffer to file")
             fifo = None
             try:
                 fifo = self['filequeue'].fifo(self.buffer_name)
@@ -103,7 +102,10 @@ class Buffer(Actor):
                     fifo.push(self['json'].dumps(data))
                 self.uses_external = True
             finally:
-                if fifo: fifo.close()
+                if fifo:
+                    _log.info("buffer to file ({} items stored)".format(len(fifo)))
+                    fifo.close()
+            
 
     @stateguard(lambda actor: len(actor.buffer) > 0)
     @condition([], ['data'])
@@ -116,6 +118,7 @@ class Buffer(Actor):
     def read_buffer(self):
         _log.info("start - disk to buffer ({} items in buffer)".format(len(self.buffer)))
         fifo = None
+        on_disk = 0
         try:
             fifo = self['filequeue'].fifo(self.buffer_name)
             while len(fifo) and len(self.buffer) < 2*self.num_tokens:
@@ -123,12 +126,11 @@ class Buffer(Actor):
                 self.buffer.append(self['json'].loads(data))
             if len(fifo) == 0:
                 self.uses_external = False
-            fifo.close()
-            fifo = None
         finally:
-            if fifo: fifo.close()
-        _log.info("end - disk to buffer ({} items in buffer)".format(len(self.buffer)))
-        
+            if fifo: 
+                _log.info("end - disk to buffer ({} items in buffer, {} stored)".format(len(self.buffer), on_disk))
+                fifo.close()
+
     action_priority = (send_buffer, read_buffer, passthrough, buffer_data)
     
     requires = ['calvinsys.native.python-collections', 'calvinsys.native.python-filequeue', 'calvinsys.native.python-json']
