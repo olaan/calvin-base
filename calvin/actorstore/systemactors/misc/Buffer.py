@@ -118,7 +118,6 @@ class Buffer(Actor):
     def read_buffer(self):
         _log.info("start - disk to buffer ({} items in buffer)".format(len(self.buffer)))
         fifo = None
-        on_disk = 0
         try:
             fifo = self['filequeue'].fifo(self.buffer_name)
             while len(fifo) and len(self.buffer) < 2*self.num_tokens:
@@ -128,7 +127,7 @@ class Buffer(Actor):
                 self.uses_external = False
         finally:
             if fifo: 
-                _log.info("end - disk to buffer ({} items in buffer, {} stored)".format(len(self.buffer), on_disk))
+                _log.info("end - disk to buffer ({} items in buffer, {} stored)".format(len(self.buffer), len(fifo)))
                 fifo.close()
 
     action_priority = (send_buffer, read_buffer, passthrough, buffer_data)
