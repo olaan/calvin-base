@@ -30,13 +30,14 @@ class Buffer(Actor):
         data : the same data
     """
     
-    @manage(['num_tokens', 'buffer_name', 'sent', 'received'])
-    def init(self, num_tokens, buffer_name):
-        _log.info("init buffer")
+    @manage(['num_tokens', 'buffer_name', 'sent', 'received', 'quiet'])
+    def init(self, num_tokens, buffer_name, quiet=False):
+        if not quiet : _log.info("init buffer")
         self.num_tokens = num_tokens
         self.buffer_name = buffer_name
         self.received = 0
         self.sent = 0
+        self.quiet = quiet
         self.setup()
 
     def setup(self):
@@ -55,7 +56,7 @@ class Buffer(Actor):
         
     def will_end(self):
         # write buffer to disk, then exit
-        _log.info("flushing buffers ({} items)".format(len(self.buffer)))
+        if not self.quiet: _log.info("flushing buffers ({} items)".format(len(self.buffer)))
         if len(self.buffer) > 0:
             fifo = None
             try:
@@ -67,17 +68,17 @@ class Buffer(Actor):
                 fifo = None
             finally:
                 if fifo: fifo.close()
-        _log.info("done")
+        if not self.quiet : _log.info("done")
     
     
     def incoming(self):
         self.received += 1
-        if self.received % 1000 == 0:
+        if not self.quiet and self.received % 1000 == 0:
             _log.info("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
     
     def outgoing(self):
         self.sent += 1
-        if self.sent % 1000 == 0:
+        if not self.quiet and self.sent % 1000 == 0:
             _log.info("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
 
 
@@ -103,7 +104,7 @@ class Buffer(Actor):
                 self.uses_external = True
             finally:
                 if fifo:
-                    _log.info("buffer to file ({} items stored)".format(len(fifo)))
+                    _log.info("buffer to file -  {} items total stored".format(len(fifo)))
                     fifo.close()
             
 
@@ -116,7 +117,6 @@ class Buffer(Actor):
     @stateguard(lambda actor: actor.uses_external and len(actor.buffer) < actor.num_tokens)
     @condition([], [])
     def read_buffer(self):
-        _log.info("start - disk to buffer ({} items in buffer)".format(len(self.buffer)))
         fifo = None
         try:
             fifo = self['filequeue'].fifo(self.buffer_name)
@@ -127,7 +127,7 @@ class Buffer(Actor):
                 self.uses_external = False
         finally:
             if fifo: 
-                _log.info("end - disk to buffer ({} items in buffer, {} stored)".format(len(self.buffer), len(fifo)))
+                _log.info("disk to buffer - {} items in buffer, {} total stored".format(len(self.buffer), len(fifo)))
                 fifo.close()
 
     action_priority = (send_buffer, read_buffer, passthrough, buffer_data)
