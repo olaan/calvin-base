@@ -285,7 +285,7 @@ def runtime_certificate(rt_attributes):
             rt_attributes_cpy = copy.deepcopy(rt_attributes)
             attributes = AttributeResolver(rt_attributes_cpy)
             node_name = attributes.get_node_name_as_str()
-            nodeid = calvinuuid.uuid("")
+            nodeid = calvinuuid.uuid("") or calvinuuid.uuid("")
             runtime = runtime_credentials.RuntimeCredentials(node_name, domain_name,
                                                            security_dir=security_dir,
                                                            nodeid=nodeid,
@@ -428,6 +428,8 @@ def main():
     # If still no name give it "no_name" name
     if not 'name' in runtime_attr.setdefault("indexed_public",{}).setdefault("node_name",{}):
         runtime_attr["indexed_public"]["node_name"]['name'] = "no_name"
+
+    if args.uuid : runtime_attr["uuid"] = args.uuid
 
     if app_info:
         dispatch_and_deploy(app_info, args.wait, uris, control_uri, runtime_attr, credentials_)
