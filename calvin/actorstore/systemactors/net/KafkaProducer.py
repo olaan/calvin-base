@@ -52,7 +52,7 @@ class KafkaProducer(Actor):
     def receive(self, data):
         self.received += 1
         if self.received % 1000 == 0:
-            _log.info("{} values received".format(self.received))
+            _log.debug("{} values received".format(self.received))
 
         key = str(data['tag'])
         timestamp_ms = data.get('calvints', None)
