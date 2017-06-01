@@ -15,8 +15,10 @@
 # limitations under the License.
 
 import opcua
-#import logging
-#logging.basicConfig()
+
+# FIXME: Uncomment to see OPCUA logs, will double all logging.
+# import logging 
+# logging.basicConfig()
 
 from calvin.utilities.calvinlogger import get_logger
 from calvin.runtime.south.plugins.async import threads, async
