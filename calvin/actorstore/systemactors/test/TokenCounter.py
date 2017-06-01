@@ -31,7 +31,7 @@ class TokenCounter(Actor):
         # Check args to verify that it is EOSToken
         return action(self, *args)
 
-    @manage(['ctr', 'checkpoint'])
+    @manage(['ctr', 'checkpoint', 'origin'])
     def init(self, origin, checkpoint):
         self.ctr = 0
         self.origin = origin
