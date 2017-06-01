@@ -32,7 +32,6 @@ class Buffer(Actor):
     
     @manage(['num_tokens', 'buffer_name', 'sent', 'received', 'quiet'])
     def init(self, num_tokens, buffer_name, quiet=False):
-        if not quiet : _log.info("init buffer")
         self.num_tokens = num_tokens
         self.buffer_name = buffer_name
         self.received = 0
@@ -45,7 +44,15 @@ class Buffer(Actor):
         self.use(Buffer.requires[0], shorthand="collections")
         self.use(Buffer.requires[1], shorthand="filequeue")
         self.use(Buffer.requires[2], shorthand="json")
+        self.use(Buffer.requires[3], shorthand="timer")
         self.buffer = self['collections'].deque()
+        
+        if self.quiet :
+            self.timer = self['timer'].once(0) # show a bit of log at the start
+            self.logger = _log.debug
+        else :
+            self.timer = None
+            self.logger = _log.info
     
     def did_migrate(self):
         self.setup()
@@ -56,7 +63,7 @@ class Buffer(Actor):
         
     def will_end(self):
         # write buffer to disk, then exit
-        if not self.quiet: _log.info("flushing buffers ({} items)".format(len(self.buffer)))
+        self.logger("flushing buffers ({} items)".format(len(self.buffer)))
         if len(self.buffer) > 0:
             fifo = None
             try:
@@ -68,20 +75,34 @@ class Buffer(Actor):
                 fifo = None
             finally:
                 if fifo: fifo.close()
-        if not self.quiet : _log.info("done")
+        self.logger("done")
     
     
     def incoming(self):
         self.received += 1
-        if not self.quiet and self.received % 1000 == 0:
-            _log.info("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
+        if self.received % 1000 == 0:
+            self.logger("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
     
     def outgoing(self):
         self.sent += 1
-        if not self.quiet and self.sent % 1000 == 0:
-            _log.info("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
+        if self.sent % 1000 == 0:
+            self.logger("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
 
 
+    @stateguard(lambda actor: actor.timer and actor.timer.triggered)
+    @condition()
+    def flip_logging(self):
+        self.timer.ack()
+        if self.quiet:
+            self.quiet = False
+            self.logger = self._info
+            self.timer = self['timer'].once(60)
+        else :
+            self.quiet = True
+            self.logger = self._debug
+            self.timer = self['timer'].once(600)
+
+        
     @stateguard(lambda actor: len(actor.buffer) == 0 and not actor.uses_external)
     @condition(['data'], ['data'])
     def passthrough(self, data):
@@ -93,18 +114,18 @@ class Buffer(Actor):
     def buffer_data(self, data):
         self.incoming()
         self.buffer.append(data)
-        if len(self.buffer) > 2*self.num_tokens:
+        if len(self.buffer) > 3*self.num_tokens:
             fifo = None
             try:
                 fifo = self['filequeue'].fifo(self.buffer_name)
                 data = []
-                for i in range(self.num_tokens):
+                while len(self.buffer) > self.num_tokens:
                     data = self.buffer.popleft()
                     fifo.push(self['json'].dumps(data))
                 self.uses_external = True
             finally:
                 if fifo:
-                    _log.info("buffer to file -  {} items total stored".format(len(fifo)))
+                    self.logger("buffer to file -  {} items total stored".format(len(fifo)))
                     fifo.close()
             
 
@@ -127,9 +148,9 @@ class Buffer(Actor):
                 self.uses_external = False
         finally:
             if fifo: 
-                _log.info("disk to buffer - {} items in buffer, {} total stored".format(len(self.buffer), len(fifo)))
+                self.logger("disk to buffer - {} items in buffer, {} total stored".format(len(self.buffer), len(fifo)))
                 fifo.close()
 
-    action_priority = (send_buffer, read_buffer, passthrough, buffer_data)
+    action_priority = (flip_logging, send_buffer, read_buffer, passthrough, buffer_data)
     
-    requires = ['calvinsys.native.python-collections', 'calvinsys.native.python-filequeue', 'calvinsys.native.python-json']
+    requires = ['calvinsys.native.python-collections', 'calvinsys.native.python-filequeue', 'calvinsys.native.python-json', 'calvinsys.events.timer']
