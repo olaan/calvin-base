@@ -95,11 +95,11 @@ class Buffer(Actor):
         self.timer.ack()
         if self.quiet:
             self.quiet = False
-            self.logger = self._info
+            self.logger = _log.info
             self.timer = self['timer'].once(60)
         else :
             self.quiet = True
-            self.logger = self._debug
+            self.logger = _log.debug
             self.timer = self['timer'].once(600)
 
         
