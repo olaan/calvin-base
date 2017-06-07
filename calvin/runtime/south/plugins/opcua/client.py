@@ -108,8 +108,17 @@ class OPCUAClient(object):
         self._watchdog_timeout = config.get("watchdog_timeout", None) or WATCHDOG_TIMEOUT
         self._reconnect_timer = config.get("reconnect_timer", None) or RECONNECT_TIMER
         self._subscription_interval = config.get("subscription_interval", None) or INTERVAL
+    
+    def reconnect_in_progress(self):
+        return self._reconnect_in_progress and self._reconnect_in_progress.active()
         
     def connect(self, notifier):
+        if not self.reconnect_in_progress():
+            self._connect(notifier)
+    
+    def _connect(self, notifier):
+        # Should only ever be called when there is no connection in progress (i.e. reconnect_in_progress() is False)
+        self._reconnect_in_progress = None
         self._client = opcua.Client(self._endpoint)
         d = threads.defer_to_thread(self._client.connect)
         d.addCallback(notifier)
@@ -117,11 +126,14 @@ class OPCUAClient(object):
     
     def _retry_connect(self, failure, notifier):
         failtype = failure.type
+        # Only retry if client has not been deleted (disconnected or migrated)
         if self._client:
-            _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, self._reconnect_timer))
-            if not self._reconnect_in_progress :
-                # Only retry if client has not been deleted (disconnected or migrated)
-                self._reconnect_in_progress = async.DelayedCall(self._reconnect_timer, self.connect, notifier)
+            # Only start reconnection if not already doing so
+            if not self.reconnect_in_progress():
+                _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, self._reconnect_timer))
+                self._reconnect_in_progress = async.DelayedCall(self._reconnect_timer, self._connect, notifier)
+            else:
+                _log.info("Reconnection in progress, not restarting")
 
     def disconnect(self):
         if self.subscription:
