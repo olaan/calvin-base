@@ -225,9 +225,9 @@ class calvinsys(object):
         return get_calvinsys().read(ref)
 
     @staticmethod
-    def close(ref):
-        return get_calvinsys().close(ref)
-
+    def close(obj):
+        obj.close()
+        get_calvinsys().remove(obj)
 
 class calvinlib(object):
 
