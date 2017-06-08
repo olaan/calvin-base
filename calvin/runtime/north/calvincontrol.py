@@ -25,6 +25,9 @@ from calvin.requests import calvinresponse
 from calvin.utilities.security import Security
 from calvin.utilities import calvinuuid
 from calvin.utilities.issuetracker import IssueTracker
+from calvin.runtime.north.calvinsys import get_calvinsys, CalvinSys
+_log = get_logger(__name__)
+
 #
 # Dynamically build selected set of APIs
 #
