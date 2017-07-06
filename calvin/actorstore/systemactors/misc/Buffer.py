@@ -81,12 +81,12 @@ class Buffer(Actor):
     def incoming(self):
         self.received += 1
         if self.received % (self.num_tokens/2) == 0:
-            self.logger("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
+            self.logger("received: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
     
     def outgoing(self):
         self.sent += 1
         if self.sent % (self.num_tokens/2) == 0:
-            self.logger("recieved: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
+            self.logger("received: {}, sent: {}, memory buffer: {}".format(self.received, self.sent, len(self.buffer)))
 
 
     @stateguard(lambda actor: actor.timer and actor.timer.triggered)
