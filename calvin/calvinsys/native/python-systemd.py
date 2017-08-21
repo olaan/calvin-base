@@ -18,7 +18,7 @@ class Journal(object):
         j.log_level(journal.LOG_INFO)
         j.add_match(_SYSTEMD_UNIT=u'{}'.format(service))
         j.seek_tail()
-        entries = [j.get_previous()['MESSAGE'] for _ in range(num_entries) ]
+        entries = [j.get_previous().get('MESSAGE', "--- empty") for _ in range(num_entries) ]
         j.close()
         entries.reverse()
         return entries
