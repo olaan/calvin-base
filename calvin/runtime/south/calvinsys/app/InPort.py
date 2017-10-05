@@ -56,7 +56,6 @@ class InPort(base_calvinsys_object.BaseCalvinsysObject):
     def can_read(self):
         if self._queue is None:
             # Attempt to claim port, handles migration & duplicate tags
-            _log.info("Claiming {}".format(self._tag))
             self._queue = port_collection().claim_port(self._tag)
         return bool(self._queue) # False if empty or None, True otherwise
 
