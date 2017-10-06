@@ -33,13 +33,18 @@ class AppSink(Actor):
     def init(self, tag):
         self.outport = calvinsys.open(self, "app.outport", tag=tag)
 
+    def exception_handler(self, action, args):
+        # skip exceptions
+        return action(self, None)
+        
     def will_end(self):
         calvinsys.close(self.outport)
 
     @stateguard(lambda self: calvinsys.can_write(self.outport))
     @condition(['data'], [])
     def receive(self, data):
-        calvinsys.write(self.outport, data)
+        if data is not None:
+            calvinsys.write(self.outport, data)
 
     action_priority = (receive, )
     
