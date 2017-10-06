@@ -37,6 +37,10 @@ class Pushbullet(base_calvinsys_object.BaseCalvinsysObject):
             "channel_tag": {
                 "description": "Pushbullet to post to, see http://www.pushbullet.com",
                 "type": "string"
+            },
+            "title": {
+                "description": "title of message",
+                "type": "string"
             }
         },
         "required": ["api_key", "channel_tag"],
@@ -104,6 +108,7 @@ class Pushbullet(base_calvinsys_object.BaseCalvinsysObject):
         self.busy = True
         in_progress = threads.defer_to_thread(send)
         in_progress.addBoth(done)
+
         
     def close(self):
         del self.channel
