@@ -30,6 +30,10 @@ class Buffer(Actor):
         data : the same data, eventually
     """
     
+    def exception_handler(self, action, args):
+        # Drop any incoming exceptions
+        return action(self, None)
+        
     @manage(["buffer_name", "buffer_limit", "received", "sent", "interval"])
     def init(self, buffer_name, buffer_limit, interval):
         self.buffer_name = buffer_name
@@ -37,7 +41,6 @@ class Buffer(Actor):
         self.interval = interval
         self.received = 0
         self.sent = 0
-        self.num_stored = 0
         self.setup()
     
     def setup(self):
@@ -45,7 +48,10 @@ class Buffer(Actor):
         queuelib = calvinlib.use("queue")
         self.incoming = queuelib.new()
         self.outgoing = queuelib.new()
-        self.uses_external = True
+        
+        fifo = calvinlib.use("filequeue").new(self.buffer_name)
+        self.num_stored = len(fifo)
+        
         # reset logging
         self.timer = calvinsys.open(self, "sys.timer.once")
         calvinsys.write(self.timer, 10) # Wait a while
@@ -58,16 +64,13 @@ class Buffer(Actor):
         try:
             queuelib = calvinlib.use("filequeue")
             fifo = queuelib.new(self.buffer_name)
-            self.uses_external = True
             while len(self.incoming) > 0:
                 data = self.incoming.pop()
                 fifo.push(self.json.tostring(data))
+                self.num_stored += 1
+            fifo.close()
         except Exception as e:
             _log.info("Error buffering to disk: {}".format(e))
-        finally:
-            if fifo: 
-                self.num_stored = len(fifo)
-                fifo.close()
 
     def disk_to_buffer(self):
         fifo = None
@@ -75,34 +78,33 @@ class Buffer(Actor):
             fifo = calvinlib.use("filequeue").new(self.buffer_name)
             while len(fifo) and len(self.outgoing) < 2*self.buffer_limit:
                 data = fifo.pop()
+                self.num_stored -= 1
                 self.outgoing.appendleft(self.json.fromstring(data))
-            if not len(fifo):
-                self.uses_external = False
+            fifo.close()
         except Exception as e:
             _log.info("Error reading from disk: {}".format(e))
-        finally:
-            if fifo: 
-                self.num_stored = len(fifo)
-                fifo.close()
 
     @stateguard(lambda self: calvinsys.can_read(self.timer))
     @condition([], [])
     def logger(self):
         calvinsys.read(self.timer)
-        _log.info("received: {}, sent: {}, incoming: {}, outgoing: {}, stored: {}".format(
-            self.received, self.sent, len(self.incoming), len(self.outgoing), self.num_stored))
+        incoming = self.received + len(self.incoming)
+        outgoing = self.sent + len(self.outgoing) + self.num_stored
+        _log.info("incoming: {}, outgoing: {}, stored: {}".format(
+            incoming, outgoing, self.num_stored))
         calvinsys.write(self.timer, self.interval)
     
     @condition(['data'], [])
     def receive(self, data):
-        self.received += 1
-        self.incoming.appendleft(data)
+        if data is not None:
+            self.received += 1
+            self.incoming.appendleft(data)
 
-    @stateguard(lambda self: len(self.incoming) > 0 or self.uses_external)
+    @stateguard(lambda self: len(self.incoming) > 0 or self.num_stored > 0)
     @condition([], [])
     def buffer_data(self):
         if len(self.outgoing) < self.buffer_limit:
-            if not self.uses_external:
+            if self.num_stored == 0:
                 self.outgoing.appendleft(self.incoming.pop())
             else:
                 self.buffer_to_disk()
