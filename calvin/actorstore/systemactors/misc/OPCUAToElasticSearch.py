@@ -32,8 +32,8 @@ class OPCUAToElasticSearch(Actor):
     """
     
     @manage([])
-    def init(self):
-        self.handle = calvinsys.open(self, "web.elastic.opcua")
+    def init(self, url, tag, username, password):
+        self.handle = calvinsys.open(self, "web.elastic.opcua", url=url, tag=tag, username=username, password=password)
         
 
     @stateguard(lambda self: calvinsys.can_write(self.handle))

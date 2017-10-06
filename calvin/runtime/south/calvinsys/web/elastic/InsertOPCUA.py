@@ -41,11 +41,11 @@ class InsertOPCUA(base_calvinsys_object.BaseCalvinsysObject):
             },
             "username": {
                 "description": "Username",
-                "type" : "string"
+                "type" : ["string", "null"]
             },
             "password": {
                 "description": "Password",
-                "type": "string"
+                "type": ["string", "null"]
             }
         },
         "description": "Setup Elastic Search endpoint to receive OPCUA"
