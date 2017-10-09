@@ -106,7 +106,6 @@ class Buffer(Actor):
     
     @condition(['data'], [])
     def receive(self, data):
-        print("Incoming: {}".format(data))
         if data is not None:
             self.received += 1
             self.incoming.appendleft(data)
@@ -125,7 +124,6 @@ class Buffer(Actor):
     def send(self):
         self.sent += 1
         data = self.outgoing.pop()
-        print("Outgoing: {}".format(data))
         return (data,)
 
     action_priority = (logger, send, receive, buffer_data)
