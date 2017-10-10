@@ -24,10 +24,10 @@ class Buffer(Actor):
     """
     Buffer data to file (when necessary.)
     Inputs:
-      data : some data
+      data : a _list_ of data to be buffered
 
     Outputs:
-        data : the same data, eventually
+        data : an identical list, eventually
     """
     
     def exception_handler(self, action, args):
@@ -108,7 +108,7 @@ class Buffer(Actor):
     def receive(self, data):
         if data is not None:
             self.received += 1
-            self.incoming.appendleft(data)
+            self.incoming.extendleft(data)
 
     @stateguard(lambda self: len(self.incoming) > 0 or self.uses_external)
     @condition([], [])

@@ -92,31 +92,16 @@ class OPCUASubscriber(Actor):
             variable["info"] = self.parameters[variable["tag"]]["info"]
             self.changed_params.append(variable)
             self._idx += 1
-            self._report = False
             if self._idx % 1000 == 0:
-                _log.debug(" - changed - {} changed, {} queued".format(self._idx, len(self.changed_params)))
-                self._report = True
+                _log.info(" - changed - {} changed, {} queued".format(self._idx, len(self.changed_params)))
         return ()
 
     @stateguard(lambda actor: bool(actor.changed_params))
     @condition(action_output=['variable'])
     def handle_changed(self):
-        variable = self.changed_params.pop(0)
-        if self._report:
-            _log.debug(" - handle changed - {} changed, {} queued".format(self._idx, len(self.changed_params)))
-        return (variable,)
+        variables = self.changed_params
+        self.changed_params = []
+        return (variables,)
 
     action_priority = (handle_changed, changed)
     requires = ['calvinsys.opcua.client']
-
-# TBD: Reenable test after updating to use new calvinsys API
-#    test_kwargs = {'endpoint': "dummy",
-#                   'config': {"namespace": 1234,
-#                              "parameters": {"<tag>": {"address": "<address>",
-#                                                       "info": "<description>"}}}}
-#
-#    test_set = [
-#        {
-#            'output': {'variable': []}
-#        }
-#    ]
