@@ -64,10 +64,4 @@ class InPort(base_calvinsys_object.BaseCalvinsysObject):
 
     def close(self):
         port_collection().release_port(self.tag)
-        
-    def serialize(self):
-        return { "tag": self._tag }
-        
-    def deserialize(self, serz):
-        self._tag = serz.get("tag")
-        self._queue = None
+

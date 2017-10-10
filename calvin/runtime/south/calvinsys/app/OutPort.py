@@ -72,10 +72,3 @@ class OutPort(base_calvinsys_object.BaseCalvinsysObject):
     def close(self):
         port_collection().remove_port(self.tag)
         
-    def serialize(self):
-        return { "tag": self._tag, "length": self._length }
-        
-    def deserialize(self, serz):
-        self._tag = serz.get("tag")
-        self._length = serz.get("length")
-        self._queue = None
