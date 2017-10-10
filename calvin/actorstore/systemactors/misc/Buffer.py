@@ -58,7 +58,7 @@ class Buffer(Actor):
         self.setup()
     
     def will_end(self):
-        _log.info("Shutting down, received: {}, sent: {}".format(self.received, self.sent))
+        _log.info("{}: Shutting down, received: {}, sent: {}".format(self.buffer_name, self.received, self.sent))
         # Note: This may cause some data to arrive out-of-order
         
         # move outgoing to (head of) incoming
@@ -74,7 +74,7 @@ class Buffer(Actor):
         if len(self.incoming) == 0:
             return
         try:
-            fifo = calvinlib.use("filequeue").new(self.buffer_name)            
+            fifo = calvinlib.use("filequeue").new(self.buffer_name)
             while len(self.incoming) > 0:
                 data = [ self.incoming.pop() for _ in range(min(len(self.incoming), self.buffer_limit))]
                 fifo.push(self.json.tostring(data))
@@ -100,8 +100,8 @@ class Buffer(Actor):
     @condition([], [])
     def logger(self):
         calvinsys.read(self.timer)
-        _log.info("incoming: {}, outgoing: {}, data stored: {}".format(
-            self.received, self.sent, "yes" if self.uses_external else "no"))
+        _log.info("{}: incoming: {}, outgoing: {}, data stored: {}".format(
+            self.buffer_name, self.received, self.sent, "yes" if self.uses_external else "no"))
         calvinsys.write(self.timer, self.interval)
     
     @condition(['data'], [])
