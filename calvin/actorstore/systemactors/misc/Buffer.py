@@ -100,14 +100,15 @@ class Buffer(Actor):
     @condition([], [])
     def logger(self):
         calvinsys.read(self.timer)
-        _log.info("{}: incoming: {}, outgoing: {}, data stored: {}".format(
-            self.buffer_name, self.received, self.sent, "yes" if self.uses_external else "no"))
+        _log.info("{}: received: {}, sent: {}, data stored: {}, incoming: {}, outgoing: {}".format(
+            self.buffer_name, self.received, self.sent, "yes" if self.uses_external else "no",
+            len(self.incoming), len(self.outgoing)))
         calvinsys.write(self.timer, self.interval)
     
     @condition(['data'], [])
     def receive(self, data):
         if data is not None:
-            self.received += 1
+            self.received += len(data)
             self.incoming.extendleft(data)
 
     @stateguard(lambda self: len(self.incoming) > 0 or self.uses_external)
