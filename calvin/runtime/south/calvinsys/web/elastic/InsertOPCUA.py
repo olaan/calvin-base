@@ -112,16 +112,23 @@ class InsertOPCUA(base_calvinsys_object.BaseCalvinsysObject):
         
 
     def _wash(self, js):
-        if js.get("type") in ["Float", "Double"]:
-            js["value"] = float(js.get("value", 0))
-            js["type"] = "Float"
-        else :
-            return None
-
         for entry in ["calvints", "origin", "tag", "value", "info", "status", "type"]:
             if not entry in js :
                 print("Required entry {} missing".format(entry))
                 return None
+
+        if js.get("type", "").lower() in ["Float", "Double"]:
+            js["value"] = float(js.get("value", 0))
+            js["type"] = "Float"
+        elif js.get("type", "").lower() in ["uint16", "int16", "int32", "uint32"]:
+            # Temporary solution
+            js["value"] = float(js.get("value", 0))
+            js["type"] = "Float"
+        elif js.get("type", "").lower() in ["boolean"]:
+            return None
+        else :
+            return None
+
 
         # fix status to conform to string-format
         try:
