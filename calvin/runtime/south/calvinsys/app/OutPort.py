@@ -64,7 +64,7 @@ class OutPort(base_calvinsys_object.BaseCalvinsysObject):
             # attempt to create port if not exist
             # handles deserialization as well as duplicate tags
             self._queue = port_collection().new_port(self._tag, self._length)
-        return not port_collection().port_claimed(self._tag)
+        return port_collection().port_claimed(self._tag)
 
     def write(self, data):
         self._queue.appendleft(data)

@@ -63,5 +63,5 @@ class InPort(base_calvinsys_object.BaseCalvinsysObject):
         return self._queue.pop()
 
     def close(self):
-        port_collection().release_port(self.tag)
+        port_collection().release_port(self._tag)
 

@@ -48,7 +48,9 @@ class PortCollection(object):
             PortCollection._ports.pop(tag)
             
     def port_claimed(self, tag):
-        return not PortCollection._ports.get(tag, {}).get("available", False)
+        if tag in PortCollection._ports:
+            return not PortCollection._ports[tag]["available"]
+        return False
 
 _port_collection = None
 
