@@ -16,6 +16,7 @@
 
 import requests
 import re
+import json
 
 from calvin.runtime.south.plugins.async import threads
 from calvin.utilities.calvinlogger import get_logger
@@ -122,6 +123,12 @@ class InsertOPCUA(base_calvinsys_object.BaseCalvinsysObject):
                 print("Required entry {} missing".format(entry))
                 return None
 
+        # fix status to conform to string-format
+        try:
+            js["status"] = "{code}, {name}, {doc}".format(**js["status"])
+        except:
+            js["status"] = "-1, Failure, Erroneous status"
+
         def _checkts(ts):
             if not InsertOPCUA.re_date_full.search(js[ts]):
                 if InsertOPCUA.re_date_no_ms.search(js[ts]):
@@ -154,6 +161,8 @@ class InsertOPCUA(base_calvinsys_object.BaseCalvinsysObject):
 
         if not js:
             self._status = 500 # Generic error
+            _log.info("Do not conform: {}".format(json.dumps(data, indent=2)))
+            return
             
         def _make_index():
             return "log--%s-%s" % (self._tag, js["serverts"].split(" ")[0])
