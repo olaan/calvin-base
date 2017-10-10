@@ -26,9 +26,8 @@ class PortCollection(object):
 
     def claim_port(self, tag):
         port = PortCollection._ports.get(tag)
-        if port:
-            if port["available"]:
-                port["available"] = False
+        if port and port["available"]:
+            port["available"] = False
             return port["queue"]
         return None
 
@@ -47,6 +46,9 @@ class PortCollection(object):
     def remove_port(self, tag):
         if PortCollection._ports.get(tag):
             PortCollection._ports.pop(tag)
+            
+    def port_claimed(self, tag):
+        return not PortCollection._ports.get(tag, {}).get("available", False)
 
 _port_collection = None
 

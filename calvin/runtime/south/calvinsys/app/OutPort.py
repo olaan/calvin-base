@@ -41,7 +41,7 @@ class OutPort(base_calvinsys_object.BaseCalvinsysObject):
             }
             
         },
-        "description": "Incoming data is made availabel to other application"
+        "description": "Incoming data is made available to other application"
     }
 
     can_write_schema = {
@@ -54,7 +54,7 @@ class OutPort(base_calvinsys_object.BaseCalvinsysObject):
         "type": ["boolean", "integer", "number", "string", "array", "object"]
     }
 
-    def init(self, tag, length=10, **kwargs):
+    def init(self, tag, length=100, **kwargs):
         self._tag = tag
         self._length = length
         self._queue = None
@@ -64,7 +64,7 @@ class OutPort(base_calvinsys_object.BaseCalvinsysObject):
             # attempt to create port if not exist
             # handles deserialization as well as duplicate tags
             self._queue = port_collection().new_port(self._tag, self._length)
-        return self._queue is not None
+        return not port_collection().port_claimed(self._tag)
 
     def write(self, data):
         self._queue.appendleft(data)
