@@ -46,6 +46,10 @@ class AppSink(Actor):
         if data is not None:
             calvinsys.write(self.outport, data)
 
-    action_priority = (receive, )
+    @condition(['data'], [])
+    def drop(self, data):
+        pass
+        
+    action_priority = (receive, drop)
     
     requires = ['app.outport']
