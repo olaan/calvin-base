@@ -76,7 +76,7 @@ class Buffer(Actor):
         try:
             fifo = calvinlib.use("filequeue").new(self.buffer_name)
             while len(self.incoming) > 0:
-                data = [ self.incoming.pop() for _ in range(min(len(self.incoming), self.buffer_limit))]
+                data = self.incoming.pop()
                 fifo.push(self.json.tostring(data))
             fifo.close()
             self.uses_external = True
@@ -87,10 +87,10 @@ class Buffer(Actor):
         fifo = None
         try:
             fifo = calvinlib.use("filequeue").new(self.buffer_name)
-            while len(fifo) > 0 and len(self.outgoing) < self.buffer_limit:
+            if len(fifo) > 0 and sum([ len(x) for x in self.outgoing]) < self.buffer_limit:
                 data = self.json.fromstring(fifo.pop())
                 # print("to buffer: {}".format(data))
-                self.outgoing.extendleft(data)
+                self.outgoing.appendleft(data) # list of values
             self.uses_external = (len(fifo) != 0)
             fifo.close()
         except Exception as e:
@@ -109,7 +109,7 @@ class Buffer(Actor):
     def receive(self, data):
         if data is not None:
             self.received += len(data)
-            self.incoming.extendleft(data)
+            self.incoming.appendleft(data) # append a list of items
 
     @stateguard(lambda self: len(self.incoming) > 0 or self.uses_external)
     @condition([], [])
@@ -123,8 +123,8 @@ class Buffer(Actor):
     @stateguard(lambda self: len(self.outgoing) > 0)
     @condition([], ['data'])
     def send(self):
-        self.sent += 1
         data = self.outgoing.pop()
+        self.sent += len(1)
         return (data,)
 
     action_priority = (logger, send, receive, buffer_data)
