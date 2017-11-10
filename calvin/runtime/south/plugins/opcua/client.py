@@ -170,11 +170,12 @@ class OPCUAClient(object):
                 except Exception as e:
                     _log.warning("Failed to get node {}: {}".format(node, e))
                 if variable is not None:
-                    variables.append(variables)
+                    variables.append(variable)
                     
             # Subscribe to changes in collected variables
             for v in variables:
                 self.subscription.subscribe_data_change(v)
+                
             # Should the list be empty, we let the watchdog handle it by resetting the subscription
             self._watchdog_running = async.DelayedCall(self._watchdog_timout, watchdog, sub_handler)
 
