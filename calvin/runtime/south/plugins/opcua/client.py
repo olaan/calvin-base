@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import opcua
+import json
 
 # FIXME: Uncomment to see OPCUA logs, will double all logging.
 # import logging 
@@ -46,7 +47,7 @@ def data_value_to_struct(data_value):
 
     return {
         "type": data_value.Value.VariantType.name,
-        "value": str(data_value.Value.Value),
+        "value": json.dumps(data_value.Value.Value),
         "status": { "code": data_value.StatusCode.value, 
                     "name": data_value.StatusCode.name,
                     "doc": data_value.StatusCode.doc
@@ -65,28 +66,21 @@ def get_node_id_as_string(node):
 class OPCUAClient(object):
 
     class SubscriptionHandler(object):
-        def __init__(self, handler, watchdog=None, watchdog_timeout=None):
+        def __init__(self, handler):
             super(OPCUAClient.SubscriptionHandler, self).__init__()
             self._handler = handler
-            self._watchdog = watchdog
-            self.watchdog_timeout = watchdog_timeout
-            self.saw_data = False
-            # if available, set up watchdog to be called every WATCHDOG_TIMER seconds
-            if self._watchdog:
-                async.DelayedCall(self.watchdog_timeout, self.check_data)
+            self._changes = 0
 
-        def check_data(self):
-            if self.saw_data:
-                self.saw_data = False
-                async.DelayedCall(self.watchdog_timeout, self.check_data)
-            else:
-                _log.info("No data for {} seconds".format(2*self.watchdog_timeout))
-                self._watchdog()
+        def changes(self):
+            return self._changes
+            
+        def reset_changes(self):
+            self._changes = 0
             
         def notify_handler(self, node, variable):
             variable["id"] = get_node_id_as_string(node)
-            # kick the watchdog
-            self.saw_data = True
+            # Note that something has changed (for the watchdog)
+            self._changes += 1
             # hand the notification over to the scheduler
             self._handler(variable)
 
@@ -104,13 +98,17 @@ class OPCUAClient(object):
         self._running = False
         self._client = None
         self._handle = None
-        self._reconnect_in_progress = None
+        self._reconnecting  = None
+        self._resubscribing = None
+        self._watchdog_runnng = None
+        
         self._watchdog_timeout = config.get("watchdog_timeout", None) or WATCHDOG_TIMEOUT
         self._reconnect_timer = config.get("reconnect_timer", None) or RECONNECT_TIMER
         self._subscription_interval = config.get("subscription_interval", None) or INTERVAL
+        
     
     def reconnect_in_progress(self):
-        return self._reconnect_in_progress and self._reconnect_in_progress.active()
+        return self._reconnecting and self._reconnecting.active()
         
     def connect(self, notifier):
         if not self.reconnect_in_progress():
@@ -118,7 +116,7 @@ class OPCUAClient(object):
     
     def _connect(self, notifier):
         # Should only ever be called when there is no connection in progress (i.e. reconnect_in_progress() is False)
-        self._reconnect_in_progress = None
+        self._reconnecting = None
         self._client = opcua.Client(self._endpoint)
         d = threads.defer_to_thread(self._client.connect)
         d.addCallback(notifier)
@@ -131,7 +129,7 @@ class OPCUAClient(object):
             # Only start reconnection if not already doing so
             if not self.reconnect_in_progress():
                 _log.info("Failed to connect, with reason {}, retrying in {}".format(failtype, self._reconnect_timer))
-                self._reconnect_in_progress = async.DelayedCall(self._reconnect_timer, self._connect, notifier)
+                self._reconnecting = async.DelayedCall(self._reconnect_timer, self._connect, notifier)
             else:
                 _log.info("Reconnection in progress, not restarting")
 
@@ -144,57 +142,67 @@ class OPCUAClient(object):
             async.call_in_thread(self._client.disconnect)
             self._client = None
 
-    def _collect_variables(self):
-        vars = []
-        for n in self.nodeids:
-            var = None
-            try:
-                var = self._client.get_node(n)
-            except Exception as e:
-                _log.warning("Failed to get node %s: %s" % (n,e))
-            vars.append(var)
-        return vars
+    def _subscribe(self):
 
-    def _subscribe_variables(self, variables):
-        for v in variables:
-            self.subscription.subscribe_data_change(v)
+        def watchdog(self, subscription_handler, *args, **kwargs):
+            if not self._client:
+                # There is no client. This means either a reconnection, migration or shutdown is in progress.
+                return
+
+            if subscription_handler.changes() == 0:
+                _log.warning("Data watchdog triggered for {}, resetting connection".format(self.endpoint))
+                self._resubscribe()
+            else:
+                subscription_handler.reset_changes()
+            self._watchdog_running.reset()
+
+        def setup_subscription(*args, **kwargs):
+            # Create subscription handler
+            sub_handler = self.SubscriptionHandler(self.handler)
+            # Create (empty) OPCUA subscription with subscription handler
+            self.subscription = self._client.create_subscription(self._subscription_interval, sub_handler)
+            # Collect variables (nodes) from client
+            variables = []
+            for node in self.nodeids:
+                variable = None
+                try:
+                    variable = self._client.get_node(node)
+                except Exception as e:
+                    _log.warning("Failed to get node {}: {}".format(node, e))
+                if variable is not None:
+                    variables.append(variables)
+                    
+            # Subscribe to changes in collected variables
+            for v in variables:
+                self.subscription.subscribe_data_change(v)
+            # Should the list be empty, we let the watchdog handle it by resetting the subscription
+            self._watchdog_running = async.DelayedCall(self._watchdog_timout, watchdog, sub_handler)
+
+        def connection_done(*args, **kwargs):
+            def subscription_error(self, failure):
+                _log.warning("Failed to setup subscription for {} with reason {} - resetting connection".format(self.endpoint, failure.type))
+                self._resubscribe()
+            
+            d = threads.defer_to_thread(setup_subscription)
+            d.addErrback(subscription_error)
         
-    def _subscribe_changes(self, variables):
-        d = threads.defer_to_thread(self._subscribe_variables, variables)
-        d.addErrback(self._subscribe_error)
+        self._resubscribing = None
+        
+        if self._client:
+            # We already have a connection, just setup the subscription
+            connection_done()
+        else :
+            # Connect and then setup subscription
+            self.connect(connection_done)
 
-    def _setup_subscription(self, subscription):
-        self.subscription = subscription
-        d = threads.defer_to_thread(self._collect_variables)
-        d.addCallback(self._subscribe_changes)
-        d.addErrback(self._subscribe_error)
-
-    def _subscribe_error(self, failure):
-        _log.warning("Failed to setup subscription with reason {} - resetting connection".format(failure.type))
-        async.DelayedCall(self._watchdog_timeout, self._watchdog)
-    
+    def _resubscribe(self):
+        if not self._resubscribing:
+            # Subscription issues often caused by connection problems, disconnect
+            self.disconnect()
+            self._resubscribing = async.DelayedCall(self._reconnect_timer, self._subscribe)
+        
     def subscribe(self, nodeids, handler):
+        # Save callback and nodeids before setting up subscription
         self.nodeids = nodeids
         self.handler = handler
-        
-        def notifier(dummy=None):
-            d = threads.defer_to_thread(self._client.create_subscription, self._subscription_interval, self.SubscriptionHandler(handler, self._watchdog, self._watchdog_timeout))
-            d.addCallback(self._setup_subscription)
-            d.addErrback(self._subscribe_error)
-        
-        if self._client:
-            notifier()
-        else :
-            self.connect(notifier)
-
-    def _watchdog(self):
-        if self._client:
-            _log.warning("Data watchdog triggered, resetting connection")
-            self.disconnect()
-            self.subscribe(self.nodeids, self.handler)
-        
-    def subscribe_change(self, subscription, variable):
-        return subscription.subscribe_data_change(variable)
-    
-    def unsubscribe(self, subscription, handle):
-        return subscription.unsubscribe(handle)
+        self._subscribe()
