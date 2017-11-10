@@ -70,5 +70,5 @@ class OutPort(base_calvinsys_object.BaseCalvinsysObject):
         self._queue.appendleft(data)
 
     def close(self):
-        port_collection().remove_port(self.tag)
+        port_collection().remove_port(self._tag)
         
