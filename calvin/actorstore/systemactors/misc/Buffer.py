@@ -124,7 +124,7 @@ class Buffer(Actor):
     @condition([], ['data'])
     def send(self):
         data = self.outgoing.pop()
-        self.sent += len(1)
+        self.sent += len(data)
         return (data,)
 
     action_priority = (logger, send, receive, buffer_data)
