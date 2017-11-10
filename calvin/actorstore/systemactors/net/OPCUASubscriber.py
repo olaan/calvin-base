@@ -50,10 +50,11 @@ class OPCUASubscriber(Actor):
         "info": "description given for parameter"
     }
 
-    Note: calvints is time in ms since epoch and is always present. Other timestamps may or may not be present depending on OPCUA server.
+    Note: calvints is time in ms since epoch and is always present. Other timestamps may or may not
+    be present depending on OPCUA server.
 
     Output:
-        variable : json description of variable as shown above.
+        variable : list of changed variables on the format described above.
     """
 
     @manage(['endpoint', 'parameters', 'namespace', 'changed_params', 'client_config', 'origin'])
@@ -79,21 +80,26 @@ class OPCUASubscriber(Actor):
             self['opcua'].configure(self.client_config)
         self['opcua'].start_subscription(self.endpoint, self.tags.keys())
         self._report = False
-        self._idx = 0
+        self._received = 0
+        self._sent = 0
         print(self.tags)
+
 
     @stateguard(lambda self: self['opcua'].variable_changed)
     @condition()
     def changed(self):
         while self['opcua'].variable_changed:
-            variable = self['opcua'].get_first_changed()
-            variable["origin"] = self.origin
-            variable["tag"] = self.tags[variable["id"]]
-            variable["info"] = self.parameters[variable["tag"]]["info"]
-            self.changed_params.append(variable)
-            self._idx += 1
-            if self._idx % 1000 == 0:
-                _log.info(" - changed - {} changed, {} queued".format(self._idx, len(self.changed_params)))
+            try:
+                variable = self['opcua'].get_first_changed()
+                variable["origin"] = self.origin
+                variable["tag"] = self.tags[variable["id"]]
+                variable["info"] = self.parameters[variable["tag"]]["info"]
+                self.changed_params.append(variable)
+                self._received += 1
+            except Exception as e:
+                _log.info("Failed to fetch variable: {}".format(e))
+            if self._received % 10000 == 0:
+                _log.info(" - changed - {} received, {} sent, {} queued".format(self._received, self._sent, len(self.changed_params)))
         return ()
 
     @stateguard(lambda actor: bool(actor.changed_params))
@@ -101,6 +107,7 @@ class OPCUASubscriber(Actor):
     def handle_changed(self):
         variables = self.changed_params
         self.changed_params = []
+        self._sent += len(variables)
         return (variables,)
 
     action_priority = (handle_changed, changed)
