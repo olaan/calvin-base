@@ -144,7 +144,7 @@ class OPCUAClient(object):
 
     def _subscribe(self):
 
-        def watchdog(self, subscription_handler, *args, **kwargs):
+        def watchdog(subscription_handler, *args, **kwargs):
             if not self._client:
                 # There is no client. This means either a reconnection, migration or shutdown is in progress.
                 return
