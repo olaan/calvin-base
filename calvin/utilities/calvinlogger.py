@@ -131,7 +131,6 @@ def add_logging_handler(logger_name):
         logging.getLogger(logger_name).addHandler(_ch_handler)
     except Exception as e:
         _log.error("Could not add logger {}: {}".format(logger_name, e))
-    
 def set_file(filename):
     _create_logger(filename)
 
