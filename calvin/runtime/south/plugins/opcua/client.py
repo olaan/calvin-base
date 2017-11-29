@@ -25,7 +25,7 @@ from calvin.utilities.calvinlogger import get_logger
 from calvin.runtime.south.plugins.async import threads, async
 
 WATCHDOG_TIMEOUT = 60 # Reset connection if no data within 2 x WATCHDOG_TIMER seconds
-RECONNECT_TIMER = 10 # Attempt reconnect every RECONNECT_TIMER seconds if connection lost
+RECONNECT_TIMER = 120 # Attempt reconnect every RECONNECT_TIMER seconds if connection lost
 INTERVAL = 1000 # Interval to use in subscription check, probably ms
 
 
@@ -85,7 +85,10 @@ class OPCUAClient(object):
             self._handler(variable)
 
         def datachange_notification(self, node, val, data):
-            self.notify_handler(node, data_value_to_struct(data.monitored_item.Value))
+            try:
+                self.notify_handler(node, data_value_to_struct(data.monitored_item.Value))
+            except Exception as e:
+                _log.info("Error in datachange_notification: {}".format(e))
 
         def event_notification(self, event):
             _log.info("%r" % (event,))
@@ -115,12 +118,15 @@ class OPCUAClient(object):
             self._connect(notifier)
     
     def _connect(self, notifier):
-        # Should only ever be called when there is no connection in progress (i.e. reconnect_in_progress() is False)
-        self._reconnecting = None
-        self._client = opcua.Client(self._endpoint)
-        d = threads.defer_to_thread(self._client.connect)
-        d.addCallback(notifier)
-        d.addErrback(self._retry_connect, notifier)
+        try:
+            # Should only ever be called when there is no connection in progress (i.e. reconnect_in_progress() is False)
+            self._reconnecting = None
+            self._client = opcua.Client(self._endpoint)
+            d = threads.defer_to_thread(self._client.connect)
+            d.addCallback(notifier)
+            d.addErrback(self._retry_connect, notifier)
+        except Exception as e:
+            _log.info("Error in _connect: {}".format(e))
     
     def _retry_connect(self, failure, notifier):
         failtype = failure.type
@@ -134,76 +140,132 @@ class OPCUAClient(object):
                 _log.info("Reconnection in progress, not restarting")
 
     def disconnect(self):
-        if self.subscription:
-            async.call_in_thread(self.subscription.delete)
-            self.subscription = None
+        def delete_subscription(sub):
+            try:
+                sub.delete()
+            except Exception as e:
+                _log.info("Error when deleteing subscription: {}".format(e))
+
+        def disconnect_client(client):
+            try:
+                client.disconnect()
+            except Exception as e:
+                _log.info("Error when disconnecting client: {}".format(e))
+
+        try:
+            if self.subscription:
+                sub = self.subscription
+                async.call_in_thread(delete_subscription, sub)
+                self.subscription = None
             
-        if self._client:
-            async.call_in_thread(self._client.disconnect)
-            self._client = None
+            if self._client:
+                client = self._client
+                async.call_in_thread(disconnect_client, client)
+                self._client = None
+        except Exception as e:
+            _log.info("Error in disconnect: {}".format(e))
 
     def _subscribe(self):
 
-        def watchdog(subscription_handler, *args, **kwargs):
-            if not self._client:
-                # There is no client. This means either a reconnection, migration or shutdown is in progress.
-                return
+        def check_connection():
+            result = False
+            try:
+                # Try to read out a variable value
+                variable = self._client.get_node(self.nodeids[0])
+                variable.get_data_value()
+                # If we get here, the connection seems ok, reset watchdog
+                result = True
+                _log.info("Connection ok, resetting watchdog")
+                self._watchdog_running.reset()
+            except Exception as e:
+                _log.info("Check connection failed: {}".format(e))
 
-            if subscription_handler.changes() == 0:
-                _log.warning("Data watchdog triggered for {}, resetting connection".format(self.endpoint))
+            if not result:
+                _log.info("Connection issue, resetting connection")
                 self._resubscribe()
-            else:
-                subscription_handler.reset_changes()
-            self._watchdog_running.reset()
+
+        def watchdog(subscription_handler, *args, **kwargs):
+            try:
+                if not self._client:
+                    # There is no client. This means either a reconnection, migration or shutdown is in progress.
+                    return
+
+                if subscription_handler.changes() == 0:
+                    _log.warning("Data watchdog triggered for {}, checking connection".format(self._endpoint))
+                    async.call_in_thread(check_connection)
+                else:
+                    subscription_handler.reset_changes()
+                    self._watchdog_running.reset()
+            except Exception as e:
+                _log.info("Error in watchdog: {}".format(e))
 
         def setup_subscription(*args, **kwargs):
-            # Create subscription handler
-            sub_handler = self.SubscriptionHandler(self.handler)
-            # Create (empty) OPCUA subscription with subscription handler
-            self.subscription = self._client.create_subscription(self._subscription_interval, sub_handler)
-            # Collect variables (nodes) from client
-            variables = []
-            for node in self.nodeids:
-                variable = None
-                try:
-                    variable = self._client.get_node(node)
-                except Exception as e:
-                    _log.warning("Failed to get node {}: {}".format(node, e))
-                if variable is not None:
-                    variables.append(variable)
+            try:
+                # Create subscription handler
+                sub_handler = self.SubscriptionHandler(self.handler)
+                # Create (empty) OPCUA subscription with subscription handler
+                self.subscription = self._client.create_subscription(self._subscription_interval, sub_handler)
+                # Collect variables (nodes) from client
+                variables = []
+                for node in self.nodeids:
+                    variable = None
+                    try:
+                        variable = self._client.get_node(node)
+                    except Exception as e:
+                        _log.warning("Failed to get node {}: {}".format(node, e))
+                    if variable is not None:
+                        variables.append(variable)
                     
-            # Subscribe to changes in collected variables
-            for v in variables:
-                self.subscription.subscribe_data_change(v)
+                # Subscribe to changes in collected variables
+                for v in variables:
+                    self.subscription.subscribe_data_change(v)
                 
-            # Should the list be empty, we let the watchdog handle it by resetting the subscription
-            self._watchdog_running = async.DelayedCall(self._watchdog_timout, watchdog, sub_handler)
+                # Should the list be empty, we let the watchdog handle it by resetting the subscription
+                self._watchdog_running = async.DelayedCall(self._watchdog_timeout, watchdog, sub_handler)
+            except Exception as e:
+                _log.info("Error in setup_subscription: {}".format(e))
+		self._resubscribe()
+
 
         def connection_done(*args, **kwargs):
-            def subscription_error(self, failure):
-                _log.warning("Failed to setup subscription for {} with reason {} - resetting connection".format(self.endpoint, failure.type))
-                self._resubscribe()
-            
-            d = threads.defer_to_thread(setup_subscription)
-            d.addErrback(subscription_error)
+            def subscription_error(failure):
+                try:
+                    _log.warning("Failed to setup subscription for {} with reason {} - resetting connection".format(self._endpoint, failure.type))
+                    self._resubscribe()
+                except Exception as e:
+                    _log.info("Error in subscription_error: {}".format(e))
+            try:
+                d = threads.defer_to_thread(setup_subscription)
+                d.addErrback(subscription_error)
+            except Exception as e:
+                _log.info("Error in connection_done: {}".format(e))
+        try:
+            self._resubscribing = None
         
-        self._resubscribing = None
-        
-        if self._client:
-            # We already have a connection, just setup the subscription
-            connection_done()
-        else :
-            # Connect and then setup subscription
-            self.connect(connection_done)
+            if self._client:
+                # We already have a connection, just setup the subscription
+                connection_done()
+            else :
+                # Connect and then setup subscription
+                self.connect(connection_done)
+        except Exception as e:
+            _log.info("Error in _subscribe: {)".format(e))
+
 
     def _resubscribe(self):
-        if not self._resubscribing:
-            # Subscription issues often caused by connection problems, disconnect
-            self.disconnect()
-            self._resubscribing = async.DelayedCall(self._reconnect_timer, self._subscribe)
+        try:
+            if not self._resubscribing:
+                # Subscription issues often caused by connection problems, disconnect
+                self.disconnect()
+                self._resubscribing = async.DelayedCall(self._reconnect_timer, self._subscribe)
+        except Exception as e:
+            _log.info("Error in _resubscribe: {}".format(e))
         
     def subscribe(self, nodeids, handler):
-        # Save callback and nodeids before setting up subscription
-        self.nodeids = nodeids
-        self.handler = handler
-        self._subscribe()
+        try:
+            # Save callback and nodeids before setting up subscription
+            self.nodeids = nodeids
+            self.handler = handler
+            self._subscribe()
+        except Exception as e:
+            _log.info("Error in susbcribe: {}".format(e))
