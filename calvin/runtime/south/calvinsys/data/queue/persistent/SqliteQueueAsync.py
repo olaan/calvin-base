@@ -23,80 +23,101 @@ import json
 
 _log = get_logger(__name__)
 
-def errored(*args, **kwargs):
-    _log.info("ERROR: {} / {}".format(args, kwargs))
-    
 class SqliteQueueAsync(BaseQueue.BaseQueue):
     """
     Asynchronous (using twisted adbapi) SQLite-based implementation of persistant queue
-        """
+    
+    Based on the following (from sqlite.org):
+      1)  If no ROWID is specified on the insert [...] then an appropriate ROWID is created automatically.
+      2) The usual algorithm is to give the newly created row a ROWID that is one larger than the largest
+         ROWID in the table prior to the insert.
+      3) If the table is initially empty, then a ROWID of 1 is used.
+      4) If the largest ROWID is equal to the largest possible integer (9223372036854775807) then the
+        database engine starts picking positive candidate ROWIDs at random until it finds one
+        that is not previously used.
+      5) The normal ROWID selection [...] will generate monotonically increasing unique ROWIDs as long
+        as you never use the maximum ROWID value and you never delete the entry in the table with the largest ROWID.
+
+    Since we are implementing a FIFO queue, 1) should ensure there is a row id, 2) & 5) that the ordering is correct
+    and 3) that the rowid is reset whenever the queue is emptied, so 4) should never happen.
+    """
     
     def init(self, **kwargs):
         self.db_name = kwargs.get("queue_id", "db")
-        self.db_path = os.path.join(os.path.abspath(os.path.curdir), self.db_name)
+        self.db_path = os.path.join(os.path.abspath(os.path.curdir), self.db_name + ".sq3")
         self.db = adbapi.ConnectionPool('sqlite3', self.db_path, check_same_thread=False)
         
-        self._readlock = True
         self._value = None
+        self._changed = None
 
-        def ready(arg):
-            self._readlock = False
+        def ready(length):
+            self._changed = True # Something has changed, need to check if readable
             self.scheduler_wakeup()
 
         def create(db):
-            db.execute("CREATE TABLE IF NOT EXISTS queue (id INTEGER PRIMARY KEY AUTOINCREMENT, value BLOB)")
-            
+            # Create simple queue table. Using TEXT unless there is a reason not to.
+            db.execute("CREATE TABLE IF NOT EXISTS queue (value BLOB)")
+
+        def error(e):
+            _log.error("Error initializing queue {}: {}".format(self.db_name, e))
+
         q = self.db.runInteraction(create)
         q.addCallback(ready)
-        q.addErrback(errored)
+        q.addErrback(error)
 
         
     def can_write(self):
-        return True
+        # Can always write after init, meaning changed is no longer None
+        return self._changed is not None
 
     def write(self, value):
-        def error(*args):
-            _log.warning("Error during write: {}".format(args))
-            done()
+        def error(e):
+            _log.warning("Error during write: {}".format(e))
+            done() # Call done to wake scheduler, not sure this is a good idea
             
-        def done(_):
+        def done(unused=None):
+            self._changed = True # Let can_read know there may be something new to read
             self.scheduler_wakeup()
 
-        value = json.dumps(value)
+        value = json.dumps(value) # Convert to string for sqlite
         q = self.db.runOperation("INSERT INTO queue (value) VALUES (?)", (value, ))
         q.addCallback(done)
         q.addErrback(error)
 
 
     def can_read(self):
-        def error(*args):
-            _log.warning("Error during read: {}".format(args))
-            done(None)
+        def error(e):
+            _log.warning("Error during read: {}".format(e))
+            done()
             
-        def done(value):
-            self._readlock = False
-            if value:
+        def done(value=None):
+            if value is not None:
+                self._changed = True # alser can_read that the database has changed
                 self._value = json.loads(value)
-            # _log.info("returning new value {}".format(value))
             self.scheduler_wakeup()
 
         def pop(db):
-            db.execute("SELECT id, value FROM queue ORDER BY id LIMIT 1")
-            res = db.fetchone()
-            # _log.info("popped: {}".format(res))
-            value = None
-            if res:
-                idx, value = res
-                db.execute("DELETE FROM queue WHERE id = ?", (idx,))
+            db.execute("SELECT value FROM queue ORDER BY rowid LIMIT 1")
+            value = db.fetchone() # a (idx, value) tuple, or None
+            if value is not None:
+                value = value[0]
+                # pop value (i.e. delete row with lowest row id)
+                db.execute("DELETE FROM queue WHERE rowid = (SELECT rowid FROM queue ORDER BY rowid LIMIT 1)")
+
             return value
 
-        if not self._readlock :
-            self._readlock = True
+        if self._value is not None:
+            # There is a value to read
+            return True
+        elif self._changed :
+            # Something has changed, try to pop a value
+            self._changed = False
             q = self.db.runInteraction(pop)
             q.addCallback(done)
-            q.addErrback(errored)
+            q.addErrback(error)
 
-        return self._value is not None
+        # Nothing to do
+        return False
 
     def read(self):
         value = self._value

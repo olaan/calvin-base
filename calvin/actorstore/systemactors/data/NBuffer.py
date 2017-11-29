@@ -44,7 +44,8 @@ class NBuffer(Actor):
         calvinsys.write(self.timer, 10) # Wait a while
         self.fifo = calvinsys.open(self, 'data.queue', queue_id=self.buffer_name) 
 
-
+    def will_end(self):
+        calvinsys.close(self.fifo)
 
     @stateguard(lambda self: calvinsys.can_read(self.timer))
     @condition([], [])
