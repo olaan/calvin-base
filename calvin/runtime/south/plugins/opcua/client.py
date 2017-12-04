@@ -103,7 +103,7 @@ class OPCUAClient(object):
         self._handle = None
         self._reconnecting  = None
         self._resubscribing = None
-        self._watchdog_runnng = None
+        self._watchdog_running = None
         
         self._watchdog_timeout = config.get("watchdog_timeout", None) or WATCHDOG_TIMEOUT
         self._reconnect_timer = config.get("reconnect_timer", None) or RECONNECT_TIMER
