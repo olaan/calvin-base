@@ -1,0 +1,4 @@
+m : data.AppIoTSubscribe(resource_ids=[""])
+out : io.Print()
+
+m.measurement > out.token
