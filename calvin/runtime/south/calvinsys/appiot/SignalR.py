@@ -77,7 +77,7 @@ class SignalR(base_calvinsys_object.BaseCalvinsysObject):
             data = bytes(urlencode({}).encode())
             url = base_url + "/api/v3/deviceNetwork/realtimeToken"
             req = Request(url);
-            _log.info("Using {}".format(url))
+            # _log.info("Using {}".format(url))
             req.headers = headers;
             req.data = data;
             res = urlopen(req)
@@ -94,6 +94,9 @@ class SignalR(base_calvinsys_object.BaseCalvinsysObject):
         def error(*args, **kwargs):
             _log.info("Failed to get token: {}".format(args))
 
+        self.running = False
+        self.connection = None
+        self.session = None
         self.measurements = []
         self.token = None
         self.api_key = api_key
@@ -108,12 +111,9 @@ class SignalR(base_calvinsys_object.BaseCalvinsysObject):
 
     def subscribe(self):
         def new_measurement(data):
-            _log.info("new data: {}".format(data))
             self.measurements.append(data)
-            self.scheduler_wakeup()
             
         def new_measurement_thread(data):
-            _log.info("new data: {}".format(data))
             async.call_in_thread(new_measurement, data)
         
         def print_error(error):
@@ -125,7 +125,6 @@ class SignalR(base_calvinsys_object.BaseCalvinsysObject):
                 
             def connection_stop():
                 _log.info("connection stopped")
-                
             
             session = Session()
             connection = Connection(self.base_url + "/signalr", session)
@@ -134,16 +133,14 @@ class SignalR(base_calvinsys_object.BaseCalvinsysObject):
             connection.starting += connection_start
             connection.stopping += connection_stop
             connection.error += print_error
-            _log.info("connection established.")
             measurementhub.client.on("NewMeasurement", new_measurement_thread)
             measurementhub.server.invoke("authenticate", self.device_network_id, self.token)
             for resource_id in self.resource_ids:
                 measurementhub.server.invoke("addSensor", resource_id)
-            connection.wait(30)
+            # connection.wait(30) # <- seems to get 'better' results, needs more than one data point though
             return session, connection
                 
         def ready(result):
-            _log.info("subscription ready {}".format(result))
             self.session, self.connection = result
             
         d = threads.defer_to_thread(subscribe_thread)
@@ -151,11 +148,25 @@ class SignalR(base_calvinsys_object.BaseCalvinsysObject):
         d.addErrback(print_error)
 
     def can_read(self):
+        def done(*args, **kwargs):
+            self.running = False
+            self.scheduler_wakeup()
+            
+        if self.connection and not self.running:
+            self.running = True
+            d = threads.defer_to_thread(self.connection.wait, 1) # Probably needs some tuning
+            d.addBoth(done)
         return bool(self.measurements)
         
     def read(self):
         return self.measurements.pop(0)
 
     def close(self):
-        self.connection.close()
-        self.session.close()
+        if self.session:
+            async.call_from_thread(self.session.close)
+            self.session = None
+        # The following sometimes (often) hangs indefinitely
+        # if self.connection:
+        #     async.call_from_thread(self.connection.close)
+        #     self.connection = None
+
